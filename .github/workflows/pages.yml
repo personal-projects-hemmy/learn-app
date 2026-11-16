@@ -1,0 +1,45 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Decode binary assets
+        run: |
+          set -euo pipefail
+          base64 -d nunito.ttf.b64 > nunito.ttf
+          base64 -d icons/apple-touch-icon.png.b64 > icons/apple-touch-icon.png
+          base64 -d icons/icon-192.png.b64 > icons/icon-192.png
+          base64 -d icons/icon-512.png.b64 > icons/icon-512.png
+          base64 -d icons/maskable-512.png.b64 > icons/maskable-512.png
+          rm -f nunito.ttf.b64 icons/*.b64
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
