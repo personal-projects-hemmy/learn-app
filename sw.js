@@ -1,0 +1,17 @@
+/* Offline cache. Course files are read from courses/index.js, so new courses are cached automatically.
+   Bump VERSION after changing app files to force a clean refresh. */
+const VERSION = 'learn-v1';
+importScripts('courses/index.js');
+const ASSETS = ['./', 'index.html', 'app.js', 'styles.css', 'nunito.ttf', 'manifest.webmanifest', 'courses/index.js',
+  'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png']
+  .concat((self.COURSE_IDS || []).map(id => 'courses/' + id + '.js'));
+self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener('fetch', e => {
+  const r = e.request; if (r.method !== 'GET' || new URL(r.url).origin !== location.origin) return;
+  e.respondWith(caches.match(r, { ignoreSearch: true }).then(hit => {
+    const net = fetch(r).then(res => { if (res && res.ok) { const cp = res.clone(); caches.open(VERSION).then(c => c.put(r, cp)); } return res; })
+      .catch(() => hit || (r.mode === 'navigate' ? caches.match('index.html') : undefined));
+    return hit || net;
+  }));
+});
