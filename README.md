@@ -1,7 +1,13 @@
 # Learn: one app, many courses
 
 A Duolingo-style Progressive Web App (installable, works offline, no backend).
-All progress is stored in the browser's `localStorage` under the key `learn-state-v2`. An in-progress lesson is saved separately under `learn-session-v1` so a reload resumes at the current question; the session is cleared when the lesson is finished, failed, or quit.
+All progress is stored in the browser's `localStorage` under the key `learn-state-v2`. An in-progress lesson is saved separately under `learn-session-v1` so a reload resumes at the current question (including while the right/wrong panel is showing); the session is cleared when the lesson is finished, failed, or quit.
+
+Typed answers accept a list of alternatives (`alt` / `answers` on each exercise). Checking ignores case, surrounding spaces, punctuation, hyphens, and optional leading articles (le, la, les, l', un, une, des, the, a, an, to). A missing accent is still marked correct, with a short “watch the accents” note.
+
+If a course sets `rev` and that number changes (for example after the EN/FR vocabulary rebuild), that course's lesson path and review stats are reset so old item ids cannot clash with the new content. Global XP is kept.
+
+The service worker (`sw.js`) is network-first for HTML, JS and CSS, and on a version bump it claims clients and reloads open tabs so a phone picks up the update after a single open or reload. Fonts and icons stay cache-first, with a cache fallback when offline.
 
 ```
 learn/
@@ -44,7 +50,7 @@ registerCourse({
       { kind: 'mcq', sub: 'Translate', prompt: `<span class="big">${ctx.esc(it.en)}</span>`,
         options: opts, correct: opts.indexOf(it.es), explain: `${it.en} = ${it.es}` },
       { kind: 'type', sub: 'Write in Spanish', prompt: `<span class="big">${ctx.esc(it.en)}</span>`,
-        answers: [it.es], display: it.es }
+        answers: [it.es], alt: ['vos'], display: it.es }
     ];
   },
   // Optional: a "tap the pairs" exercise. Each pair is [left, right, itemId].
@@ -60,7 +66,7 @@ registerCourse({
 self.COURSE_IDS = ['code-de-la-route', 'english-idioms', 'en-fr-vocabulary', 'spanish-basics'];
 ```
 
-3. In `sw.js`, bump `VERSION` (e.g. `learn-v3`) so installed copies refresh their offline cache. The new course file is cached automatically because the service worker reads `courses/index.js`.
+3. In `sw.js`, bump `VERSION` (e.g. `learn-v4`) so installed copies refresh their offline cache. The new course file is cached automatically because the service worker reads `courses/index.js`.
 
 The new course appears in the course picker ("Add a course" in the header switcher). Nothing else needs to change.
 

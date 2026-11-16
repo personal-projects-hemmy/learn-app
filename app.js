@@ -50,10 +50,35 @@
   const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
   const today = () => dk(new Date());
   function norm(s, keepAcc) {
-    s = String(s).toLowerCase().replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[’`]/g, "'");
+    s = String(s).toLowerCase().replace(/œ/g, 'oe').replace(/æ/g, 'ae').replace(/[’‘`´]/g, "'").replace(/[—–−]/g, '-');
     if (!keepAcc) s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     s = s.replace(/[.!?¿¡,;:"«»()]/g, ' ').replace(/\s+/g, ' ').trim();
-    return s.replace(/^(le |la |les |l'|un |une |des |the |a |an |to )/, '').trim();
+    const art = /^(le |la |les |l'|un |une |des |du |de la |de l'|d'|the |a |an |to )/;
+    while (art.test(s)) s = s.replace(art, '').trim();
+    return s;
+  }
+  function forms(s, keepAcc) {
+    const n = norm(s, keepAcc);
+    return [n, n.replace(/-/g, ' ').replace(/\s+/g, ' ').trim(), n.replace(/[-\s]/g, '')];
+  }
+  function answerList(ex) {
+    const out = [], seen = new Set();
+    const add = a => {
+      if (a == null) return;
+      String(a).split('|').forEach(x => {
+        x = String(x).trim(); if (!x) return;
+        const k = x.toLowerCase(); if (seen.has(k)) return; seen.add(k); out.push(x);
+      });
+    };
+    (ex.answers || []).forEach(add); (ex.alt || []).forEach(add);
+    return out;
+  }
+  function gradeType(v, ex) {
+    const answers = answerList(ex), shown = ex.display || answers[0] || '';
+    const hit = keepAcc => answers.some(a => { const A = forms(a, keepAcc), B = forms(v, keepAcc); return A.some(x => B.includes(x)); });
+    if (hit(true)) return { ok: true, shown, note: '' };
+    if (hit(false)) return { ok: true, shown, note: T.almost + ' <b>' + esc(shown) + '</b>' };
+    return { ok: false, shown, note: '' };
   }
 
   /* ---------- courses ---------- */
@@ -402,15 +427,13 @@
       ok = R.sel === ex.correct; shown = ex.options[ex.correct];
       root.querySelectorAll('.opt').forEach((b, i) => { if (i === ex.correct) b.classList.add('right'); else if (i === R.sel) b.classList.add('wrongopt'); b.disabled = true; });
     } else {
-      const v = $('.typein').value;
-      ok = ex.answers.some(a => norm(a, true) === norm(v, true));
-      if (!ok && ex.answers.some(a => norm(a) === norm(v))) { ok = true; note = `${T.almost} <b>${esc(ex.display)}</b>`; }
-      shown = ex.display; $('.typein').disabled = true;
+      const g = gradeType($('.typein').value, ex);
+      ok = g.ok; shown = g.shown; note = g.note; $('.typein').disabled = true;
     }
     R.checked = true; R.answers++;
     if (ok) { R.ok++; if (!R.requeued.has(R.i)) R.firstOk++; }
     else { R.mistakes++; R.hearts--; if (!R.requeued.has(R.i) && R.queue.length < R.total + 4) { R.queue.push(Object.assign({}, ex)); R.requeued.add(R.queue.length - 1); } }
-    rec(ex.itemId, ok); save(); beep(ok); $('.hearts b').textContent = R.hearts;
+    rec(ex.itemId, ok); save(); saveSession(); beep(ok); $('.hearts b').textContent = R.hearts;
     feedback(ok, shown, note);
   }
   function feedback(ok, shown, note) {
@@ -471,11 +494,31 @@
     .then(() => {
       ORDER.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
       S.enrolled = S.enrolled.filter(id => COURSES[id]);
+      Object.values(COURSES).forEach(c => {
+        if (!c.rev) return;
+        const cs = cstate(c.id);
+        if (cs.rev !== c.rev) { cs.done = {}; cs.stats = {}; cs.rev = c.rev; }
+      });
+      save();
       if (S.current && COURSES[S.current] && S.enrolled.includes(S.current)) setCourse(S.current); else if (S.enrolled.length) setCourse(S.enrolled[0]);
-      window.__app = { get state() { return S; }, streak, COURSES, get course() { return C && C.id; }, get run() { return R; } };
+      window.__app = { get state() { return S; }, streak, COURSES, get course() { return C && C.id; }, get run() { return R; }, startRun, gradeType, version: 'learn-v4' };
       const sess = loadSession();
       const how = sess ? resumeSession(sess) : null;
       if (how !== 'fail' && how !== 'done') render();
     });
-  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('pagehide', saveSession);
+  document.addEventListener('visibilitychange', () => { if (R) saveSession(); });
+  if ('serviceWorker' in navigator) {
+    /* Only reload when an already-controlled page gets a new worker. Listening on first
+       install would loop: claim → controllerchange → reload → claim… */
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+    }
+    const registerSW = () => navigator.serviceWorker.register('sw.js').then(reg => {
+      const bump = () => { try { if (document.visibilityState !== 'hidden') reg.update(); } catch (e) {} };
+      document.addEventListener('visibilitychange', bump);
+      window.addEventListener('focus', bump);
+    }).catch(() => {});
+    if (document.readyState === 'complete') registerSW(); else window.addEventListener('load', registerSW);
+  }
 })();
