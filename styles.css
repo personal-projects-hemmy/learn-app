@@ -103,12 +103,14 @@ h1,h2,h3{margin:0}
 .lbody{flex:1;padding:12px 18px 220px}
 .ex-sub{font-size:21px;font-weight:900;color:#3c3c3c;margin:8px 0 14px;line-height:1.25}
 .prompt{font-size:18px;line-height:1.45;margin-bottom:18px;color:#3c3c3c;position:relative}
+.prompt.has-spk{display:flex;align-items:center;gap:10px}
+.prompt-main{flex:1;min-width:0}
 .prompt .big{font-size:28px;font-weight:900;color:var(--cd);display:block}
 .prompt .sent{display:block;background:var(--cl);border-radius:14px;padding:12px 14px;font-weight:700;font-size:18px}
 .prompt .blank{display:inline-block;min-width:80px;border-bottom:3px solid var(--c);margin:0 2px}
 .prompt .q{display:block;font-weight:800}
 .prompt .sign{display:block;margin:0 auto 14px;width:120px;height:120px}
-.spk{position:absolute;right:0;top:0;font-size:20px;background:var(--cl);border-radius:12px;width:42px;height:42px;box-shadow:0 3px 0 rgba(0,0,0,.08)}
+.spk{flex:none;font-size:20px;background:var(--cl);border-radius:12px;width:42px;height:42px;box-shadow:0 3px 0 rgba(0,0,0,.08);display:grid;place-items:center}
 .opts{display:flex;flex-direction:column;gap:10px}
 .opt{display:flex;align-items:center;gap:12px;text-align:left;padding:13px 14px;border:2px solid #e5e5e5;border-radius:16px;box-shadow:0 4px 0 #e5e5e5;font-size:16px;font-weight:700;background:#fff;transition:transform .08s}
 .opt kbd{flex:none;width:26px;height:26px;border-radius:8px;border:2px solid #e5e5e5;display:grid;place-items:center;font-family:inherit;font-size:13px;color:#aaa;font-weight:900}

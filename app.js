@@ -300,10 +300,11 @@
   function renderLesson() {
     const ex = R.queue[R.i]; window.__ex = ex;
     const spk = ex.speak ? `<button class="spk" data-say="1" aria-label="audio">🔊</button>` : '';
+    const prompt = `<div class="prompt${ex.speak ? ' has-spk' : ''}">${spk}${ex.speak ? `<div class="prompt-main">${ex.prompt}</div>` : ex.prompt}</div>`;
     let body = '';
-    if (ex.kind === 'mcq') body = `<div class="ex-sub">${ex.sub}</div><div class="prompt">${ex.prompt}${spk}</div>
+    if (ex.kind === 'mcq') body = `<div class="ex-sub">${ex.sub}</div>${prompt}
         <div class="opts">${ex.options.map((o, i) => `<button class="opt" data-i="${i}"><kbd>${i + 1}</kbd><span>${esc(o)}</span></button>`).join('')}</div>`;
-    else if (ex.kind === 'type') body = `<div class="ex-sub">${ex.sub}</div><div class="prompt">${ex.prompt}${spk}</div>
+    else if (ex.kind === 'type') body = `<div class="ex-sub">${ex.sub}</div>${prompt}
         <textarea class="typein" rows="2" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${T.typeHere}" lang="${ex.lang || ''}"></textarea>
         ${ex.chars ? `<div class="chars">${ex.chars.map(c => `<button class="char">${c}</button>`).join('')}</div>` : ''}`;
     else if (ex.kind === 'match') {

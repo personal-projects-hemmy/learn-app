@@ -1,6 +1,6 @@
 /* Offline cache. Course files are read from courses/index.js, so new courses are cached automatically.
    Bump VERSION after changing app files to force a clean refresh. */
-const VERSION = 'learn-v1';
+const VERSION = 'learn-v2';
 importScripts('courses/index.js');
 const ASSETS = ['./', 'index.html', 'app.js', 'styles.css', 'nunito.ttf', 'manifest.webmanifest', 'courses/index.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png']
