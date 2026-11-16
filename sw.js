@@ -3,7 +3,7 @@
    HTML/JS/CSS are network-first with cache: 'no-cache' so a phone is not stuck on a
    stale HTTP-cached app.js (GitHub Pages uses max-age=600). On activate, an old cache
    is replaced and open tabs are navigated once so one reload/open is enough. */
-const VERSION = 'learn-v4';
+const VERSION = 'learn-v5';
 importScripts('courses/index.js');
 const ASSETS = ['./', 'index.html', 'app.js', 'styles.css', 'nunito.ttf', 'manifest.webmanifest', 'courses/index.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon.png']

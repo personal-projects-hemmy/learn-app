@@ -103,7 +103,7 @@
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
   const clearSession = () => { try { localStorage.removeItem(SESS_KEY); } catch (e) {} };
   function saveSession() {
-    if (!R) { clearSession(); return; }
+    if (!R) return;
     try {
       localStorage.setItem(SESS_KEY, JSON.stringify({
         v: 1, type: R.type, course: R.course, u: R.u, l: R.l, queue: R.queue, i: R.i,
@@ -115,10 +115,48 @@
   }
   function validEx(ex) {
     if (!ex || !ex.kind) return false;
-    if (ex.kind === 'mcq') return Array.isArray(ex.options) && typeof ex.correct === 'number';
+    if (ex.kind === 'mcq') return Array.isArray(ex.options) && typeof ex.correct === 'number' && ex.correct >= 0 && ex.correct < ex.options.length;
     if (ex.kind === 'type') return Array.isArray(ex.answers);
     if (ex.kind === 'match') return Array.isArray(ex.pairs);
     return false;
+  }
+  function allowedKinds(course) {
+    course = course || C;
+    if (!course) return null;
+    if (Array.isArray(course.exerciseTypes) && course.exerciseTypes.length) return new Set(course.exerciseTypes);
+    if (course.noTyping) return new Set(['mcq', 'match']);
+    return null;
+  }
+  function typeToMcq(ex, course) {
+    const item = course && course.ITEMS && course.ITEMS[ex.itemId];
+    if (!item || !course.makeExercises) return null;
+    const wantFr = ex.lang === 'fr' || /french|fran[cç]ais/i.test(ex.sub || '');
+    const list = course.makeExercises(item, ctx()).filter(e => e.kind === 'mcq');
+    const hit = list.find(e => wantFr ? /french|fran[cç]ais/i.test(e.sub || '') : /english|anglais/i.test(e.sub || ''));
+    const pick = hit || list[0];
+    return pick && validEx(pick) ? Object.assign({ itemId: ex.itemId }, pick) : null;
+  }
+  function sanitizeSession(s) {
+    const course = COURSES[s.course];
+    const types = allowedKinds(course);
+    if (!types) return s;
+    const old = s.queue, newQ = [];
+    let newI = 0, sawCurrent = false;
+    for (let i = 0; i < old.length; i++) {
+      let ex = old[i];
+      if (ex.kind === 'type' && !types.has('type')) ex = typeToMcq(ex, course);
+      else if (!types.has(ex.kind)) ex = null;
+      if (!ex || !validEx(ex)) continue;
+      newQ.push(ex);
+      if (i < s.i) newI = newQ.length;
+      else if (i === s.i) { newI = newQ.length - 1; sawCurrent = true; }
+    }
+    if (!newQ.length) { clearSession(); return null; }
+    s.queue = newQ;
+    s.i = sawCurrent ? newI : Math.min(newI, newQ.length);
+    s.total = newQ.length;
+    if (s.i >= newQ.length) s._finish = true;
+    return s;
   }
   function loadSession() {
     try {
@@ -136,6 +174,14 @@
   }
   function resumeSession(s) {
     setCourse(s.course);
+    s = sanitizeSession(s);
+    if (!s) return 'gone';
+    if (s._finish) {
+      R = { type: s.type, course: s.course, u: s.u, l: s.l, queue: s.queue, i: s.queue.length, hearts: s.hearts,
+        mistakes: +s.mistakes || 0, firstOk: +s.firstOk || 0, answers: +s.answers || 0, ok: +s.ok || 0,
+        requeued: new Set(), start: s.start || Date.now(), sel: null, checked: false, total: s.total || s.queue.length, lastFb: null };
+      finish(); return 'done';
+    }
     R = { type: s.type, course: s.course, u: s.u, l: s.l, queue: s.queue, i: s.i, hearts: s.hearts,
       mistakes: +s.mistakes || 0, firstOk: +s.firstOk || 0, answers: +s.answers || 0, ok: +s.ok || 0,
       requeued: new Set(Array.isArray(s.requeued) ? s.requeued : []), start: s.start || Date.now(),
@@ -177,18 +223,28 @@
   /* ---------- lesson building ---------- */
   function distract(item, n, key) {
     const k = key(item); const seen = new Set([k]); const out = [];
-    for (const it of shuffle(C.units[item._u].items).concat(shuffle(C.ALL))) { const v = key(it); if (!seen.has(v)) { seen.add(v); out.push(v); } if (out.length >= n) break; }
+    const unit = (C.units[item._u] && C.units[item._u].items) || [];
+    for (const it of shuffle(unit).concat(shuffle(C.ALL))) {
+      const v = key(it); if (v == null || v === '' || seen.has(v)) continue;
+      seen.add(v); out.push(v); if (out.length >= n) break;
+    }
     return out;
   }
   const ctx = () => ({ shuffle, sample, distract, esc, ALL: C.ALL });
-  const exFor = item => shuffle(C.makeExercises(item, ctx())).map(e => Object.assign({ itemId: item.id }, e));
+  function exFor(item) {
+    let list = C.makeExercises(item, ctx()) || [];
+    const types = allowedKinds(C);
+    if (types) list = list.filter(e => types.has(e.kind));
+    return shuffle(list).map(e => Object.assign({ itemId: item.id }, e));
+  }
   function buildSet(focus, others, size, perItem, withMatch) {
     const out = []; const pools = focus.map(exFor); let round = 0;
     while (out.length < size && round < perItem) { let added = false; for (const p of pools) { if (out.length >= size) break; const e = p.shift(); if (e) { out.push(e); added = true; } } if (!added) break; round++; }
-    for (const it of shuffle(others)) { if (out.length >= size) break; out.push(exFor(it)[0]); }
+    for (const it of shuffle(others)) { if (out.length >= size) break; const e = exFor(it)[0]; if (e) out.push(e); }
     let res = shuffle(out);
     for (let i = 1; i < res.length; i++) if (res[i].itemId === res[i - 1].itemId) { const j = res.findIndex((e, k) => k > i && e.itemId !== res[i].itemId); if (j > 0) [res[i], res[j]] = [res[j], res[i]]; }
-    if (withMatch && C.makeMatch && focus.length >= 4) {
+    const types = allowedKinds(C);
+    if (withMatch && C.makeMatch && focus.length >= 4 && (!types || types.has('match'))) {
       const m = C.makeMatch(sample(focus, Math.min(5, focus.length)), ctx());
       if (m) { res = res.slice(0, size - 1); res.splice(Math.min(res.length, 2 + (Math.random() * (res.length - 2) | 0)), 0, m); }
     }
@@ -501,12 +557,12 @@
       });
       save();
       if (S.current && COURSES[S.current] && S.enrolled.includes(S.current)) setCourse(S.current); else if (S.enrolled.length) setCourse(S.enrolled[0]);
-      window.__app = { get state() { return S; }, streak, COURSES, get course() { return C && C.id; }, get run() { return R; }, startRun, gradeType, version: 'learn-v4' };
+      window.__app = { get state() { return S; }, streak, COURSES, get course() { return C && C.id; }, get run() { return R; }, startRun, gradeType, version: 'learn-v5' };
       const sess = loadSession();
       const how = sess ? resumeSession(sess) : null;
       if (how !== 'fail' && how !== 'done') render();
     });
-  window.addEventListener('pagehide', saveSession);
+  window.addEventListener('pagehide', () => { if (R) saveSession(); });
   document.addEventListener('visibilitychange', () => { if (R) saveSession(); });
   if ('serviceWorker' in navigator) {
     /* Only reload when an already-controlled page gets a new worker. Listening on first

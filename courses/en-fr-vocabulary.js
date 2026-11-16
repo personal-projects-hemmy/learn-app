@@ -9,14 +9,14 @@
       ealt: ea ? ea.split('|').map(s => s.trim()).filter(Boolean) : []
     }))
   });
-  const CHARS = ['é', 'è', 'ê', 'à', 'â', 'ç', 'î', 'ô', 'û', 'ù', 'œ', "'"];
   registerCourse({
     id: 'en-fr-vocabulary', rev: 2,
     theme: {c:'#58cc02',cd:'#46a302',cl:'#e7f9d7',acc:'#1cb0f6',bg:'#f7fbf3'},
-    desc: 'Intermediate to advanced English ⇄ French, by topic: motorcycles, IT, beauty, business, travel, health, law and the environment.',
+    desc: 'Intermediate to advanced English ⇄ French, by topic: motorcycles, IT, beauty, business, travel, health, law and the environment. Multiple-choice and matching, no typing.',
     itemNoun: 'terms', lang: 'en', name: 'EN/FR Vocabulary', short: 'EN ⇄ FR', logo: '🇫🇷', mascot: '🥐',
     lessonsPerUnit: 3, lessonSize: 10, finalSize: 12, perItem: 2, defaultGoal: 20,
-    footer: 'Type either the main translation or a listed alternative. Accents are checked gently: you will get a reminder if one is missing. Articles (le, la, les, l\', un, une…) are optional.',
+    exerciseTypes: ['mcq', 'match'], noTyping: true,
+    footer: 'Choose the right translation. Wrong options come from the same topic whenever possible.',
     units: [
       U('Motorcycles', 'Parts, riding and workshop maintenance', '🏍️', '#e8590c', [
         ['motorcycle', 'la moto', 'motocyclette|motocycle', 'motorbike|bike'],
@@ -188,14 +188,17 @@
     ],
     makeExercises(it, c) {
       const fr = { text: it.fr, lang: 'fr-FR' };
-      const mk = (correct, others) => { const o = c.shuffle([correct].concat(others)); return { options: o, correct: o.indexOf(correct) }; };
+      const mk = (correct, others) => {
+        const seen = new Set([correct]); const opts = [correct];
+        for (const o of others) { if (!o || seen.has(o)) continue; seen.add(o); opts.push(o); if (opts.length === 4) break; }
+        const o = c.shuffle(opts);
+        return { options: o, correct: o.indexOf(correct) };
+      };
       const also = (it.alt && it.alt.length) ? ` · also: ${it.alt.map(c.esc).join(', ')}` : '';
       const ex = `🇬🇧 <b>${c.esc(it.en)}</b> = 🇫🇷 <b>${c.esc(it.fr)}</b>${also}`;
       return [
         Object.assign({ kind: 'mcq', sub: 'Translate into French', prompt: `<span class="big">🇬🇧 ${c.esc(it.en)}</span>`, explain: ex, speak: { text: it.en, lang: 'en-GB' } }, mk(it.fr, c.distract(it, 3, x => x.fr))),
-        Object.assign({ kind: 'mcq', sub: 'Translate into English', prompt: `<span class="big">🇫🇷 ${c.esc(it.fr)}</span>`, explain: ex, speak: fr }, mk(it.en, c.distract(it, 3, x => x.en))),
-        { kind: 'type', sub: 'Write this in French', prompt: `<span class="big">🇬🇧 ${c.esc(it.en)}</span>`, answers: [it.fr].concat(it.alt || []), alt: it.alt || [], display: it.fr, explain: ex, lang: 'fr', chars: CHARS },
-        { kind: 'type', sub: 'Write this in English', prompt: `<span class="big">🇫🇷 ${c.esc(it.fr)}</span>`, answers: [it.en].concat(it.ealt || []), alt: it.ealt || [], display: it.en, explain: ex, lang: 'en', speak: fr }
+        Object.assign({ kind: 'mcq', sub: 'Translate into English', prompt: `<span class="big">🇫🇷 ${c.esc(it.fr)}</span>`, explain: ex, speak: fr }, mk(it.en, c.distract(it, 3, x => x.en)))
       ];
     },
     makeMatch(items) {

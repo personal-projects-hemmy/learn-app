@@ -66,11 +66,11 @@ registerCourse({
 self.COURSE_IDS = ['code-de-la-route', 'english-idioms', 'en-fr-vocabulary', 'spanish-basics'];
 ```
 
-3. In `sw.js`, bump `VERSION` (e.g. `learn-v4`) so installed copies refresh their offline cache. The new course file is cached automatically because the service worker reads `courses/index.js`.
+3. In `sw.js`, bump `VERSION` (e.g. `learn-v5`) so installed copies refresh their offline cache. The new course file is cached automatically because the service worker reads `courses/index.js`.
 
 The new course appears in the course picker ("Add a course" in the header switcher). Nothing else needs to change.
 
-Exercise kinds: `mcq` (options + correct index), `type` (answers[] + display; accents and leading articles are checked leniently), `match` (pairs). Every exercise can carry `explain` (HTML shown after answering) and `speak: { text, lang }` (adds a 🔊 button that uses the device's speech synthesis).
+Exercise kinds: `mcq` (options + correct index), `type` (answers[] + display; accents and leading articles are checked leniently), `match` (pairs). A course can set `exerciseTypes: ['mcq', 'match']` or `noTyping: true` to drop typing in lessons, review and practice (EN/FR Vocabulary uses this). A saved session that still holds a typing question for that course is converted to a multiple-choice item, or skipped if it cannot be converted. Every exercise can carry `explain` (HTML shown after answering) and `speak: { text, lang }` (adds a 🔊 button that uses the device's speech synthesis).
 
 ## Run locally
 ```
