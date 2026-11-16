@@ -70,11 +70,56 @@
 
   /* ---------- state ---------- */
   const KEY = 'learn-state-v2';
+  const SESS_KEY = 'learn-session-v1';
   const MAX_HEARTS = 5;
   const def = () => ({ v: 2, xp: 0, days: {}, goal: 20, best: 0, sound: true, enrolled: [], current: null, courses: {} });
   const cdef = () => ({ xp: 0, done: {}, stats: {}, answered: 0, correct: 0, lessons: 0 });
   let S; try { S = Object.assign(def(), JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) { S = def(); }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  const clearSession = () => { try { localStorage.removeItem(SESS_KEY); } catch (e) {} };
+  function saveSession() {
+    if (!R) { clearSession(); return; }
+    try {
+      localStorage.setItem(SESS_KEY, JSON.stringify({
+        v: 1, type: R.type, course: R.course, u: R.u, l: R.l, queue: R.queue, i: R.i,
+        hearts: R.hearts, mistakes: R.mistakes, firstOk: R.firstOk, answers: R.answers, ok: R.ok,
+        requeued: Array.from(R.requeued || []), start: R.start, total: R.total,
+        checked: !!R.checked, sel: R.sel, lastFb: R.lastFb || null
+      }));
+    } catch (e) {}
+  }
+  function validEx(ex) {
+    if (!ex || !ex.kind) return false;
+    if (ex.kind === 'mcq') return Array.isArray(ex.options) && typeof ex.correct === 'number';
+    if (ex.kind === 'type') return Array.isArray(ex.answers);
+    if (ex.kind === 'match') return Array.isArray(ex.pairs);
+    return false;
+  }
+  function loadSession() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SESS_KEY) || 'null');
+      if (!s || s.v !== 1 || !s.course || !COURSES[s.course] || !['lesson', 'review'].includes(s.type)) { clearSession(); return null; }
+      if (!Array.isArray(s.queue) || !s.queue.length || !s.queue.every(validEx)) { clearSession(); return null; }
+      const i = +s.i, hearts = +s.hearts;
+      if (!Number.isFinite(i) || i < 0 || i >= s.queue.length || !Number.isFinite(hearts) || hearts < 0) { clearSession(); return null; }
+      if (s.type === 'lesson') {
+        const c = COURSES[s.course];
+        if (!Number.isInteger(s.u) || !Number.isInteger(s.l) || s.u < 0 || s.u >= c.units.length || s.l < 0 || s.l >= c.L) { clearSession(); return null; }
+      }
+      return s;
+    } catch (e) { clearSession(); return null; }
+  }
+  function resumeSession(s) {
+    setCourse(s.course);
+    R = { type: s.type, course: s.course, u: s.u, l: s.l, queue: s.queue, i: s.i, hearts: s.hearts,
+      mistakes: +s.mistakes || 0, firstOk: +s.firstOk || 0, answers: +s.answers || 0, ok: +s.ok || 0,
+      requeued: new Set(Array.isArray(s.requeued) ? s.requeued : []), start: s.start || Date.now(),
+      sel: s.sel, checked: false, total: +s.total || s.queue.length, lastFb: s.lastFb || null };
+    if (s.hearts <= 0) { fail(); return 'fail'; }
+    if (s.checked && s.lastFb) R.checked = true;
+    else if (s.checked) { R.i++; if (R.i >= R.queue.length) { finish(); return 'done'; } }
+    return 'live';
+  }
   let C = null, CS = null; // current course + its state
   const cstate = id => S.courses[id] || (S.courses[id] = cdef());
 
@@ -278,7 +323,7 @@
     if (rb) rb.onclick = () => { const q = buildReview(false); if (q) startRun('review', q); };
     if (fb) fb.onclick = () => { const q = buildReview(true); if (q) startRun('review', q); };
     root.querySelectorAll('[data-goal]').forEach(b => b.onclick = () => { S.goal = +b.dataset.goal; save(); render(); });
-    const rs = $('#resetBtn'); if (rs) rs.onclick = () => { if (confirm(T.resetQ)) { S = def(); save(); C = null; CS = null; picking = true; render(); } };
+    const rs = $('#resetBtn'); if (rs) rs.onclick = () => { if (confirm(T.resetQ)) { S = def(); save(); clearSession(); C = null; CS = null; picking = true; R = null; render(); } };
     if (tab === 'learn' && !menuOpen && !render._scrolled) { const c = $('.node.cur'); if (c) { render._scrolled = true; setTimeout(() => c.scrollIntoView({ block: 'center' }), 50); } }
   }
   function toast(msg) {
@@ -288,8 +333,8 @@
 
   /* ---------- lesson runner ---------- */
   function startRun(type, queue, u, l) {
-    R = { type, course: C.id, u, l, queue, i: 0, hearts: MAX_HEARTS, mistakes: 0, firstOk: 0, answers: 0, ok: 0, requeued: new Set(), start: Date.now(), sel: null, checked: false, total: queue.length };
-    window.scrollTo(0, 0); render();
+    R = { type, course: C.id, u, l, queue, i: 0, hearts: MAX_HEARTS, mistakes: 0, firstOk: 0, answers: 0, ok: 0, requeued: new Set(), start: Date.now(), sel: null, checked: false, total: queue.length, lastFb: null };
+    saveSession(); window.scrollTo(0, 0); render();
   }
   function rec(id, ok) {
     const s = CS.stats[id] || (CS.stats[id] = { c: 0, w: 0, s: 0, t: 0 });
@@ -316,7 +361,8 @@
     root.innerHTML = `<div class="lesson"><header class="lhead"><button class="x" id="quit" aria-label="close">✕</button><div class="lbar"><i style="width:${R.i / R.queue.length * 100}%"></i></div>
       <span class="hearts">❤️ <b>${R.hearts}</b></span></header><main class="lbody k-${ex.kind}">${body}</main>
       <footer class="lfoot" id="lfoot"><button class="btn primary" id="checkBtn" disabled>${T.check}</button></footer></div>`;
-    R.sel = null; R.checked = false;
+    const resumeFb = R.checked && R.lastFb;
+    if (!resumeFb) { R.sel = null; R.checked = false; }
     $('#quit').onclick = quitAsk;
     const sp = $('[data-say]'); if (sp) sp.onclick = () => speak(ex.speak.text, ex.speak.lang);
     if (ex.kind === 'mcq') {
@@ -329,6 +375,12 @@
       root.querySelectorAll('.char').forEach(b => b.onclick = () => { ta.value += b.textContent; ta.oninput(); ta.focus(); });
       $('#checkBtn').onclick = check;
     } else { $('#checkBtn').style.visibility = 'hidden'; root.querySelectorAll('.mt').forEach(b => b.onclick = () => matchTap(b)); }
+    if (resumeFb) {
+      if (ex.kind === 'mcq') root.querySelectorAll('.opt').forEach((b, i) => { if (i === ex.correct) b.classList.add('right'); else if (R.sel != null && i === R.sel) b.classList.add('wrongopt'); b.disabled = true; });
+      else if (ex.kind === 'type') { const ta = $('.typein'); if (ta) ta.disabled = true; }
+      else root.querySelectorAll('.mt').forEach(x => { x.classList.add('ok', 'gone'); x.disabled = true; });
+      feedback(R.lastFb.ok, R.lastFb.shown, R.lastFb.note);
+    }
   }
   function matchTap(b) {
     const ex = R.queue[R.i], i = +b.dataset.i, side = b.dataset.side;
@@ -337,10 +389,10 @@
     const a = R.mSel; R.mSel = null;
     if (a.i === i) {
       R.matched.add(i); [a.el, b].forEach(x => { x.classList.remove('sel'); x.classList.add('ok'); setTimeout(() => x.classList.add('gone'), 350); }); beep(true);
-      if (R.matched.size === ex.pairs.length) { ex.pairs.forEach((p, k) => rec(p[2], !R.mErr.has(k))); const ok = R.mErr.size === 0; R.answers++; if (ok) { R.firstOk++; R.ok++; } R.checked = true; feedback(true, '', ''); }
+      if (R.matched.size === ex.pairs.length) { ex.pairs.forEach((p, k) => rec(p[2], !R.mErr.has(k))); const ok = R.mErr.size === 0; R.answers++; if (ok) { R.firstOk++; R.ok++; } R.checked = true; save(); feedback(true, '', ''); }
     } else {
       [a.el, b].forEach(x => { x.classList.remove('sel'); x.classList.add('bad'); setTimeout(() => x.classList.remove('bad'), 450); }); beep(false);
-      R.mErr.add(a.side === 'L' ? a.i : i); R.mistakes++; R.hearts--; $('.hearts b').textContent = R.hearts;
+      R.mErr.add(a.side === 'L' ? a.i : i); R.mistakes++; R.hearts--; $('.hearts b').textContent = R.hearts; saveSession();
       if (R.hearts <= 0) { save(); setTimeout(fail, 500); }
     }
   }
@@ -358,10 +410,11 @@
     R.checked = true; R.answers++;
     if (ok) { R.ok++; if (!R.requeued.has(R.i)) R.firstOk++; }
     else { R.mistakes++; R.hearts--; if (!R.requeued.has(R.i) && R.queue.length < R.total + 4) { R.queue.push(Object.assign({}, ex)); R.requeued.add(R.queue.length - 1); } }
-    rec(ex.itemId, ok); beep(ok); $('.hearts b').textContent = R.hearts;
+    rec(ex.itemId, ok); save(); beep(ok); $('.hearts b').textContent = R.hearts;
     feedback(ok, shown, note);
   }
   function feedback(ok, shown, note) {
+    R.lastFb = { ok, shown: shown || '', note: note || '' }; saveSession();
     const ex = R.queue[R.i], f = $('#lfoot');
     f.className = 'lfoot fb ' + (ok ? 'good' : 'bad');
     f.innerHTML = `<div class="fbtxt"><div class="fbh">${ok ? '✅ ' + pick(T.correct) : '❌ ' + T.wrong}</div>${!ok ? `<div class="fba">${esc(shown)}</div>` : ''}${note ? `<div class="fbn">${note}</div>` : ''}
@@ -370,8 +423,9 @@
   }
   function next() {
     if (!R) return; if (R.hearts <= 0) { save(); return fail(); }
-    R.i++; if (R.i >= R.queue.length) return finish();
-    renderLesson(); window.scrollTo(0, 0);
+    R.i++; R.checked = false; R.lastFb = null; R.sel = null;
+    if (R.i >= R.queue.length) return finish();
+    saveSession(); renderLesson(); window.scrollTo(0, 0);
   }
   function finish() {
     const acc = R.answers ? R.ok / R.answers : 1, perfect = R.mistakes === 0;
@@ -382,7 +436,8 @@
     S.xp += xp; CS.xp += xp; CS.lessons++;
     if (R.type === 'lesson') { const k = lk(R.u, R.l), p = CS.done[k]; CS.done[k] = { acc: Math.max(p ? p.acc : 0, acc), n: (p ? p.n : 0) + 1, at: Date.now() }; }
     const after = streak(); S.best = Math.max(S.best, after); save();
-    const secs = Math.round((Date.now() - R.start) / 1000), goalNow = todayXP() >= S.goal, type = R.type; R = null;
+    const secs = Math.round((Date.now() - R.start) / 1000), goalNow = todayXP() >= S.goal, type = R.type;
+    clearSession(); R = null;
     root.innerHTML = `<div class="done-screen"><div class="confetti">${Array.from({ length: 40 }, () => `<i style="--x:${Math.random() * 100}%;--d:${(Math.random() * 1.5 + .6).toFixed(2)}s;--h:${Math.random() * 360 | 0}"></i>`).join('')}</div>
       <div class="trophy">${C.mascot || '🎉'}</div><h1>${type === 'review' ? T.reviewDone : T.lessonDone}</h1>${perfect ? `<p class="perfect">${T.perfect}</p>` : ''}
       <div class="res"><div class="rc xp"><small>${T.xp}</small><b data-t="gained">+${xp}</b></div><div class="rc ac"><small>${T.acc}</small><b>${Math.round(acc * 100)}%</b></div><div class="rc tm"><small>${T.time}</small><b>${Math.floor(secs / 60)}:${pad(secs % 60)}</b></div></div>
@@ -391,7 +446,7 @@
     $('#doneBtn').onclick = render;
   }
   function fail() {
-    const type = R.type, u = R.u, l = R.l; R = null; save();
+    const type = R.type, u = R.u, l = R.l; clearSession(); R = null; save();
     root.innerHTML = `<div class="done-screen failed"><div class="trophy">💔</div><h1>${T.outHearts}</h1><p>${T.outHeartsSub}</p>
       <button class="btn primary" id="retryBtn">${T.retry}</button><button class="btn ghost" id="quitBtn">${T.quit}</button></div>`;
     $('#retryBtn').onclick = () => { if (type === 'lesson') startRun('lesson', buildLesson(u, l), u, l); else { const q = buildReview(false) || buildReview(true); q ? startRun('review', q) : render(); } };
@@ -402,7 +457,7 @@
     m.innerHTML = `<div class="sheet"><div class="trophy sm">${C.mascot || '🎓'}</div><h3>${T.quitQ}</h3><p>${T.quitSub}</p><button class="btn primary" id="mKeep">${T.keep}</button><button class="btn ghost red" id="mQuit">${T.quit}</button></div>`;
     document.body.appendChild(m);
     $('#mKeep').onclick = () => m.remove();
-    $('#mQuit').onclick = () => { m.remove(); save(); R = null; render(); };
+    $('#mQuit').onclick = () => { m.remove(); clearSession(); R = null; save(); render(); };
   }
   document.addEventListener('keydown', e => {
     if (!R || e.target.tagName === 'TEXTAREA') return; const ex = R.queue[R.i];
@@ -417,8 +472,10 @@
       ORDER.sort((a, b) => ids.indexOf(a) - ids.indexOf(b));
       S.enrolled = S.enrolled.filter(id => COURSES[id]);
       if (S.current && COURSES[S.current] && S.enrolled.includes(S.current)) setCourse(S.current); else if (S.enrolled.length) setCourse(S.enrolled[0]);
-      window.__app = { get state() { return S; }, streak, COURSES, get course() { return C && C.id; } };
-      render();
+      window.__app = { get state() { return S; }, streak, COURSES, get course() { return C && C.id; }, get run() { return R; } };
+      const sess = loadSession();
+      const how = sess ? resumeSession(sess) : null;
+      if (how !== 'fail' && how !== 'done') render();
     });
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 })();

@@ -1,7 +1,7 @@
 # Learn: one app, many courses
 
 A Duolingo-style Progressive Web App (installable, works offline, no backend).
-All progress is stored in the browser's `localStorage` under the key `learn-state-v2`.
+All progress is stored in the browser's `localStorage` under the key `learn-state-v2`. An in-progress lesson is saved separately under `learn-session-v1` so a reload resumes at the current question; the session is cleared when the lesson is finished, failed, or quit.
 
 ```
 learn/
@@ -60,7 +60,7 @@ registerCourse({
 self.COURSE_IDS = ['code-de-la-route', 'english-idioms', 'en-fr-vocabulary', 'spanish-basics'];
 ```
 
-3. In `sw.js`, bump `VERSION` (e.g. `learn-v2`) so installed copies refresh their offline cache. The new course file is cached automatically because the service worker reads `courses/index.js`.
+3. In `sw.js`, bump `VERSION` (e.g. `learn-v3`) so installed copies refresh their offline cache. The new course file is cached automatically because the service worker reads `courses/index.js`.
 
 The new course appears in the course picker ("Add a course" in the header switcher). Nothing else needs to change.
 
